@@ -4,27 +4,29 @@
 
 package frc.robot;
 
+import com.stzteam.mars.models.containers.IRobotContainer;
+import com.stzteam.mars.utils.TerminalGCS;
+
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
-import mars.source.models.containers.IRobotContainer;
-import mars.source.utils.TerminalBooter;
+
 
 public class Robot extends TimedRobot {
   private Command m_autonomousCommand;
   private final IRobotContainer m_robotContainer;
 
   public Robot() {
-    TerminalBooter.initNetworkStream();
+    TerminalGCS.initNetworkStream();
 
-    TerminalBooter.bootSequence();
+    TerminalGCS.bootSequence();
 
     DriverStation.silenceJoystickConnectionWarning(true);
 
     m_robotContainer = new RobotContainer();
   
-    TerminalBooter.printModuleSummary();
+    TerminalGCS.printModuleSummary();
   }
 
   @Override
@@ -33,7 +35,7 @@ public class Robot extends TimedRobot {
 
     m_robotContainer.updateNodes();
 
-    TerminalBooter.updatePeriodic();
+    TerminalGCS.updatePeriodic();
   }
 
   @Override

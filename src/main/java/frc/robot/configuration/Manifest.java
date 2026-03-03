@@ -1,7 +1,7 @@
 package frc.robot.configuration;
 
-import mars.source.builder.Environment;
-import mars.source.builder.RunMode;
+import com.stzteam.mars.builder.Environment;
+import com.stzteam.mars.builder.Environment.RunMode;
 
 public class Manifest {
 
