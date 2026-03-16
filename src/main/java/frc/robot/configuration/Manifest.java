@@ -10,4 +10,6 @@ public class Manifest {
     static{
         Environment.setMode(CURRENT_MODE);
     }
+
+    public static final boolean HAS_MARS_GCS = false;
 }

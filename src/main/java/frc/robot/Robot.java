@@ -4,13 +4,18 @@
 
 package frc.robot;
 
+import com.stzteam.forgemini.io.NetworkIO;
+import com.stzteam.mars.builder.Environment;
 import com.stzteam.mars.models.containers.IRobotContainer;
+import com.stzteam.mars.test.TestScheduler;
 import com.stzteam.mars.utils.TerminalGCS;
 
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
+import frc.robot.configuration.Manifest;
 
 public class Robot extends TimedRobot {
 
@@ -19,16 +24,27 @@ public class Robot extends TimedRobot {
   private final IRobotContainer m_robotContainer;
 
   public Robot() {
-    TerminalGCS.initNetworkStream();
 
-    TerminalGCS.bootSequence();
+    Environment.setMode(Manifest.CURRENT_MODE);
+    
+    if (Manifest.HAS_MARS_GCS) {
+      TerminalGCS.initNetworkStream();
+
+      TerminalGCS.bootSequence();
+    }
 
     DriverStation.silenceJoystickConnectionWarning(true);
 
     m_robotContainer = new RobotContainer();
   
-    TerminalGCS.printModuleSummary();
-  }
+    if (Manifest.HAS_MARS_GCS) {
+      TerminalGCS.printModuleSummary();
+    }
+
+    NetworkIO.set("System", "IO", Environment.getMode().name());
+    NetworkIO.set("System", "isOnSim", RobotBase.isSimulation());
+
+    }
 
   @Override
   public void robotPeriodic() {
@@ -36,7 +52,9 @@ public class Robot extends TimedRobot {
 
     m_robotContainer.updateNodes();
 
-    TerminalGCS.updatePeriodic();
+    if (Manifest.HAS_MARS_GCS) {
+      TerminalGCS.updatePeriodic();
+    }
   }
 
   @Override
@@ -79,10 +97,15 @@ public class Robot extends TimedRobot {
   @Override
   public void testInit() {
     CommandScheduler.getInstance().cancelAll();
+
+    CommandScheduler.getInstance()
+        .schedule(TestScheduler.runTest(m_robotContainer.getTestRoutine()));
   }
 
   @Override
-  public void testPeriodic() {}
+  public void testPeriodic() {
+    CommandScheduler.getInstance().run();
+  }
 
   @Override
   public void testExit() {}

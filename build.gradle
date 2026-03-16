@@ -30,13 +30,17 @@ deploy {
                 // getTargetTypeClass is a shortcut to get the class type using a string
 
                 frcJava(getArtifactTypeClass('FRCJavaArtifact')) {
+                    jvmArgs.add("-XX:+UnlockExperimentalVMOptions")
+                    jvmArgs.add("-XX:GCTimeRatio=5")
+                    jvmArgs.add("-XX:+UseSerialGC")
+                    jvmArgs.add("-XX:MaxGCPauseMillis=50")
                 }
 
                 // Static files artifact
                 frcStaticFileDeploy(getArtifactTypeClass('FileTreeArtifact')) {
                     files = project.fileTree('src/main/deploy')
                     directory = '/home/lvuser/deploy'
-                    deleteOldFiles = false // Change to true to delete files on roboRIO that no
+                    deleteOldFiles = true // Change to true to delete files on roboRIO that no
                                            // longer exist in deploy directory of this project
                 }
             }
@@ -53,24 +57,28 @@ wpi.java.debugJni = false
 // Set this to true to enable desktop support.
 def includeDesktopSupport = true
 
+def parsedFeatures = []
+def featuresDir = file("$projectDir/workspace/features")
+if (featuresDir.exists()) {
+    featuresDir.listFiles().each { f ->
+        if (f.name.endsWith(".json")) {
+            try {
+                parsedFeatures.add(new JsonSlurper().parseText(f.text))
+            } catch (Exception e) {
+                println "[MARS] WARNING: Empty or corrupted feature: ${f.name}"
+            }
+        }
+    }
+}
+
 repositories {
     mavenCentral()
     
-    def featuresDir = file("$projectDir/features")
-    if (featuresDir.exists()) {
-        featuresDir.listFiles().each { f ->
-            if (f.name.endsWith(".json")) {
-                try {
-                    def featureJson = new JsonSlurper().parseText(f.text)
-                    if (featureJson && featureJson.mavenUrls) {
-                        featureJson.mavenUrls.each { repoUrl ->
-                            if (repoUrl != null && !repoUrl.toString().trim().isEmpty()) {
-                                maven { url = uri(repoUrl.toString().trim()) }
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    println "[MARS WARNING] Archivo de feature corrupto o vacío: ${f.name}"
+    parsedFeatures.each { featureJson ->
+        if (featureJson.mavenUrls) {
+            featureJson.mavenUrls.each { repoUrl ->
+                if (repoUrl != null && !repoUrl.toString().trim().isEmpty()) {
+                    maven { url = uri(repoUrl.toString().trim()) }
                 }
             }
         }
@@ -98,31 +106,19 @@ dependencies {
     nativeRelease wpi.java.vendor.jniRelease(wpi.platforms.desktop)
     simulationRelease wpi.sim.enableRelease()
 
-    // --- LA DIETA DE MARS: Herramientas de metaprogramación (Solo compilan, NO van al robot) ---
-    compileOnly 'com.squareup:javapoet:1.13.0'
-    compileOnly 'com.google.auto.service:auto-service-annotations:1.1.1'
-    annotationProcessor 'com.google.auto.service:auto-service:1.1.1'
-
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
-    // --- LECTURA DINÁMICA DE FEATURES ---
-    def featuresDir = file("$projectDir/features")
-    if (featuresDir.exists()) {
-        featuresDir.listFiles().each { f ->
-            if (f.name.endsWith(".json")) {
-                def featureJson = new JsonSlurper().parseText(f.text)
-                featureJson.javaDependencies?.each { dep ->
-                    def depString = "${dep.groupId}:${dep.artifactId}:${dep.version}"
-                    
-                    if (dep.isProcessor == true) {
-                        compileOnly depString
-                        annotationProcessor depString
-                        println "[MARS] Annotation Processor init: ${dep.artifactId}"
-                    } else {
-                        implementation depString
-                    }
-                }
+    parsedFeatures.each { featureJson ->
+        featureJson.javaDependencies?.each { dep ->
+            def depString = "${dep.groupId}:${dep.artifactId}:${dep.version}"
+            
+            if (dep.isProcessor == true) {
+                compileOnly depString
+                annotationProcessor depString
+                println "[MARS] Annotation Processor init: ${dep.artifactId}"
+            } else {
+                implementation depString
             }
         }
     }
@@ -141,20 +137,17 @@ wpi.sim.addDriverstation()
 // in order to make them all available at runtime. Also adding the manifest so WPILib
 // knows where to look for our Robot Class.
 jar {
+    
+        exclude 'workspace/**'
+    exclude 'vendordeps/**'
+
     from { 
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } 
     } {
-
-        exclude '**/*.exe'         // Nada de ejecutables
-        exclude '**/*.bat'         // Nada de scripts de consola
-        exclude '**/*.md'          // Nada de markdowns
-        exclude 'mars_terminal/**' // Bloqueamos la carpeta de la terminal
-        exclude 'mars-alloy/**'    // Bloqueamos la carpeta de alloy
-        exclude 'mars-logtool/**'  // Bloqueamos la carpeta logtool
-        exclude 'mars-processor/**'// Por si acaso, bloqueamos la carpeta vieja del procesador local
-
-        exclude 'features/**'      // Bloqueamos los JSON de features
-        exclude 'vendordeps/**'    // Bloqueamos los JSON de vendordeps para no llenar el roboRIO con basura de versiones anteriores
+        exclude '**/*.exe'
+        exclude '**/*.bat'
+        exclude '**/*.md'
+        exclude '**/*.txt'
     }
     
     manifest edu.wpi.first.gradlerio.GradleRIOPlugin.javaManifest(ROBOT_MAIN_CLASS)
@@ -185,11 +178,9 @@ task generateBuildConstants {
             branch = 'git rev-parse --abbrev-ref HEAD'.execute().text.trim()
             commitDate = 'git show -s --format=%cd --date=iso HEAD'.execute().text.trim()
         } catch (Exception e) {
-            println "Advertencia: No se pudo obtener la info de Git. ¿Tienes commits hechos?"
+            println "Cannot read git info"
         }
-
-        def buildDate = new Date().format("yyyy-MM-dd HH:mm:ss")
-
+        
         constantsFile.text = """package frc.robot;
 
 /** * FILE AUTO-GENERATED BY GRADLE
@@ -199,31 +190,10 @@ public final class BuildConstants {
     public static final String GIT_COMMIT = "${commit}";
     public static final String GIT_BRANCH = "${branch}";
     public static final String GIT_DATE = "${commitDate}";
-    public static final String BUILD_DATE = "${buildDate}";
 }
 """
     }
 }
 
-task syncMarsVersion {
-    doLast {
-
-        def vendorDepFile = file('vendordeps/Mars.json')
-        def projectFile = file('mars-project.json')
-
-        if (vendorDepFile.exists() && projectFile.exists()) {
-            def vendorJson = new JsonSlurper().parseText(vendorDepFile.text)
-            def projectJson = new JsonSlurper().parseText(projectFile.text)
-
-            if (projectJson.marsVersion != vendorJson.version) {
-                projectJson.marsVersion = vendorJson.version
-                
-                projectFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(projectJson))
-                println "[STZ-Robotics] Getting mars version: ${vendorJson.version}"
-            }
-        }
-    }
-}
-
 compileJava.dependsOn generateBuildConstants
-compileJava.dependsOn syncMarsVersion
+apply from: 'workspace/build/ascii-logo.gradle'

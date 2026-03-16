@@ -9,6 +9,7 @@ import com.stzteam.mars.test.TestRoutine;
 
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
+import frc.tests.EmptyTest;
 
 public class RobotContainer implements IRobotContainer{
 
@@ -23,6 +24,6 @@ public class RobotContainer implements IRobotContainer{
 
   @Override
   public TestRoutine getTestRoutine() {
-    return null;
+    return new EmptyTest();
   }
 }
